@@ -1,0 +1,53 @@
+<!-- Full screen view -->
+<div class="view view--full">
+    <div class="layout layout--col gap--large">
+      <!-- Ship Info -->
+      <div class="item">
+        <div class="meta">
+          <span class="index">1</span>
+        </div>
+        <div class="content">
+          <span class="title">{{ data.ship_name }}</span>
+          <span class="description">MMSI: {{ data.mmsi }}</span>
+        </div>
+      </div>
+  
+      <!-- Position -->
+      <div class="item bg-gray-4">
+        <div class="content">
+          <span class="value value--large value--tnums">{{ data.position }}</span>
+          <span class="label">Position</span>
+        </div>
+      </div>
+  
+      <!-- Speed and Course -->
+      <div class="layout layout--row gap">
+        <div class="item bg-white">
+          <div class="content">
+            <span class="value value--large value--tnums">{{ data.speed }}</span>
+            <span class="label">Speed (knots)</span>
+          </div>
+        </div>
+        <div class="item bg-white">
+          <div class="content">
+            <span class="value value--large value--tnums">{{ data.course }}°</span>
+            <span class="label">Course</span>
+          </div>
+        </div>
+      </div>
+  
+      <!-- Last Update -->
+      <div class="item">
+        <div class="content">
+          <span class="description">Last Updated: {{ data.last_update }}</span>
+        </div>
+      </div>
+    </div>
+  
+    <!-- Title Bar -->
+    <div class="title_bar">
+      <img class="image" src="/api/placeholder/24/24" />
+      <span class="title">Ship Tracker</span>
+      <span class="instance">Live</span>
+    </div>
+  </div>
