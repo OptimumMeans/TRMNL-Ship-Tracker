@@ -67,9 +67,11 @@ def trmnl_webhook():
     try:
         # Get vessel data
         vessel_data = vessel_service.get_vessel_data()
+        logger.info(f"Vessel data retrieved: {vessel_data}")
         
         # Generate BMP image using DisplayGenerator
         image_data = display_generator.create_display(vessel_data)
+        logger.info(f"BMP image data generated: {len(image_data)} bytes")
         
         # Return binary image with correct headers
         response = Response(
@@ -84,10 +86,12 @@ def trmnl_webhook():
         
     except Exception as e:
         logger.error(f"Webhook error: {str(e)}")
+        logger.error(traceback.format_exc())
         return Response(
             display_generator.create_error_display(str(e)),
             mimetype='image/bmp'
         )
+
 
 @app.route('/debug')
 def debug():
@@ -129,3 +133,13 @@ if __name__ == "__main__":
         port=Config.PORT,
         debug=Config.DEBUG
     )
+    
+# Test DisplayGenerator
+vessel_data = vessel_service.get_vessel_data()
+image_data = display_generator.create_display(vessel_data)
+
+# Save to file for verification
+with open("test_output.bmp", "wb") as file:
+    file.write(image_data)
+
+print("BMP file saved as test_output.bmp")
