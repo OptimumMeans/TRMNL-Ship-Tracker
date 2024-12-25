@@ -2,6 +2,7 @@ from flask import Flask, Response, jsonify, request, render_template
 from flask_cors import CORS
 import logging
 from datetime import datetime, UTC
+import traceback
 
 from .config import Config
 from .services.display import DisplayGenerator
@@ -63,46 +64,30 @@ def status():
 
 @app.route('/webhook', methods=['GET'])
 def trmnl_webhook():
-    """TRMNL webhook endpoint."""
     try:
-        # Get latest vessel data
+        # Get vessel data
         vessel_data = vessel_service.get_vessel_data()
         
-        if not vessel_data:
-            return render_template('error.html', message="Unable to fetch vessel data")
+        # Generate BMP image using DisplayGenerator
+        image_data = display_generator.create_display(vessel_data)
         
-        # Create display data
-        display_data = {
-            'ship_name': vessel_data['ship_name'],
-            'mmsi': vessel_data['mmsi'],
-            'position': f"{vessel_data['lat']}°, {vessel_data['lon']}°",
-            'speed': vessel_data['speed'],
-            'course': vessel_data['course'],
-            'last_update': format_timestamp(vessel_data['timestamp'])
-        }
-        
-        # Return template response
-        return render_template(
-            'ship_display.html', 
-            data=display_data,
-            refresh_interval=Config.REFRESH_INTERVAL
+        # Return binary image with correct headers
+        response = Response(
+            image_data,
+            mimetype='image/bmp',
+            headers={
+                'X-TRMNL-Refresh': str(Config.REFRESH_INTERVAL),
+                'X-TRMNL-Plugin-UUID': Config.TRMNL_PLUGIN_UUID
+            }
         )
+        return response
         
     except Exception as e:
         logger.error(f"Webhook error: {str(e)}")
-        return render_template('error.html', message=str(e))
-
-if __name__ == "__main__":
-    logger.info(f"Starting TRMNL Ship Tracker")
-    logger.info(f"Plugin UUID: {Config.TRMNL_PLUGIN_UUID}")
-    logger.info(f"Target MMSI: {Config.MMSI}")
-    logger.info(f"Refresh Interval: {Config.REFRESH_INTERVAL} seconds")
-    
-    app.run(
-        host=Config.HOST,
-        port=Config.PORT,
-        debug=Config.DEBUG
-    )
+        return Response(
+            display_generator.create_error_display(str(e)),
+            mimetype='image/bmp'
+        )
 
 @app.route('/debug')
 def debug():
