@@ -1,10 +1,9 @@
 from PIL import Image, ImageDraw, ImageFont
 import io
 import logging
-import requests
 from typing import Optional, Dict, Any, Tuple
 from datetime import datetime
-from math import log, tan, pi, cos
+from math import pi, cos, radians
 from ..utils.formatters import format_timestamp
 
 logger = logging.getLogger(__name__)
@@ -13,12 +12,6 @@ class DisplayGenerator:
     """Service for generating e-ink display images."""
     
     def __init__(self, width: int, height: int):
-        """Initialize the display generator.
-        
-        Args:
-            width: Display width in pixels
-            height: Display height in pixels
-        """
         self.width = width
         self.height = height
         self.font = ImageFont.load_default()
@@ -36,12 +29,7 @@ class DisplayGenerator:
                 self._draw_error_state(draw, ship_data)
             else:
                 # Draw left side with map
-                map_image = self._generate_map(
-                    float(ship_data['lat']),
-                    float(ship_data['lon'])
-                )
-                if map_image:
-                    image.paste(map_image, (0, 0))
+                self._draw_simple_map(draw, float(ship_data['lat']), float(ship_data['lon']))
                 
                 # Draw right side with ship data
                 self._draw_ship_info(draw, ship_data)
@@ -57,58 +45,56 @@ class DisplayGenerator:
         except Exception as e:
             logger.error(f"Error generating display: {str(e)}")
             return None
-    
-    def _generate_map(self, lat: float, lon: float) -> Optional[Image.Image]:
-        """Generate map tile with ship position."""
-        try:
-            # Calculate OSM tile coordinates
-            zoom = 8  # Adjust zoom level as needed
-            x, y = self._latlon_to_tile(lat, lon, zoom)
             
-            # Fetch map tile
-            tile_url = f"https://tile.openstreetmap.org/{zoom}/{x}/{y}.png"
-            response = requests.get(tile_url, timeout=5)
-            if response.status_code != 200:
-                logger.error(f"Failed to fetch map tile: {response.status_code}")
-                return None
-            
-            # Load and resize tile
-            tile = Image.open(io.BytesIO(response.content))
-            map_image = tile.resize((self.map_width, self.map_height))
-            
-            # Convert to black and white with dithering
-            map_bw = map_image.convert('1', dither=Image.FLOYDSTEINBERG)
-            
-            # Add ship marker
-            draw = ImageDraw.Draw(map_bw)
-            pixel_x, pixel_y = self._latlon_to_pixels(lat, lon, zoom)
-            marker_size = 10
-            draw.ellipse(
-                [pixel_x - marker_size, pixel_y - marker_size,
-                 pixel_x + marker_size, pixel_y + marker_size],
-                fill=0
-            )
-            
-            return map_bw
-            
-        except Exception as e:
-            logger.error(f"Error generating map: {str(e)}")
-            return None
-    
-    def _latlon_to_tile(self, lat: float, lon: float, zoom: int) -> Tuple[int, int]:
-        """Convert latitude/longitude to tile coordinates."""
-        lat_rad = lat * pi / 180
-        n = 2.0 ** zoom
-        x = int((lon + 180.0) / 360.0 * n)
-        y = int((1.0 - log(tan(lat_rad) + (1 / cos(lat_rad))) / pi) / 2.0 * n)
-        return x, y
-    
-    def _latlon_to_pixels(self, lat: float, lon: float, zoom: int) -> Tuple[int, int]:
-        """Convert latitude/longitude to pixel coordinates within map image."""
-        x, y = self._latlon_to_tile(lat, lon, zoom)
-        pixel_x = int((lon + 180) / 360 * self.map_width)
-        pixel_y = int((1 - (log(tan(pi/4 + lat*pi/360)) / pi)) / 2 * self.map_height)
-        return pixel_x, pixel_y
+    def _draw_simple_map(self, draw: ImageDraw, lat: float, lon: float) -> None:
+        """Draw a simple map representation with ship position."""
+        # Draw map border
+        border_margin = 20
+        draw.rectangle(
+            [border_margin, border_margin, 
+             self.map_width - border_margin, self.map_height - border_margin],
+            outline=0
+        )
+        
+        # Draw grid lines
+        grid_spacing = 40
+        for x in range(border_margin, self.map_width - border_margin, grid_spacing):
+            draw.line([(x, border_margin), (x, self.map_height - border_margin)], fill=0, width=1)
+        for y in range(border_margin, self.map_height - border_margin, grid_spacing):
+            draw.line([(border_margin, y), (self.map_width - border_margin, y)], fill=0, width=1)
+        
+        # Calculate ship position on map
+        # Map covers 20 degrees of lat/lon centered on ship position
+        lat_min, lat_max = lat - 10, lat + 10
+        lon_min, lon_max = lon - 10, lon + 10
+        
+        map_height = self.map_height - (2 * border_margin)
+        map_width = self.map_width - (2 * border_margin)
+        
+        # Convert ship position to pixel coordinates
+        x = border_margin + (lon - lon_min) / (lon_max - lon_min) * map_width
+        y = border_margin + (lat_max - lat) / (lat_max - lat_min) * map_height
+        
+        # Draw crosshair marker
+        marker_size = 8
+        draw.line([(x - marker_size, y), (x + marker_size, y)], fill=0, width=2)
+        draw.line([(x, y - marker_size), (x, y + marker_size)], fill=0, width=2)
+        draw.ellipse([x - marker_size, y - marker_size,
+                     x + marker_size, y + marker_size], outline=0)
+        
+        # Draw coordinates
+        draw.text((border_margin + 5, border_margin - 15),
+                 f"{lat:.1f}°N", font=self.font, fill=0)
+        draw.text((self.map_width - border_margin - 50, border_margin - 15),
+                 f"{lon:.1f}°E", font=self.font, fill=0)
+        
+        # Draw compass rose
+        compass_size = 20
+        compass_x = self.map_width - compass_size - 5
+        compass_y = self.map_height - compass_size - 5
+        draw.text((compass_x, compass_y), "N", font=self.font, fill=0)
+        draw.line([(compass_x + 8, compass_y + 15),
+                  (compass_x + 8, compass_y + 5)], fill=0, width=2)
     
     def _draw_ship_info(self, draw: ImageDraw, data: Dict[str, Any]) -> None:
         """Draw ship information on right side of display."""
@@ -152,6 +138,13 @@ class DisplayGenerator:
         draw.text(
             (x_start, y_pos),
             f"Course: {data['course']}°",
+            font=self.font,
+            fill=0
+        )
+        y_pos += 30
+        draw.text(
+            (x_start, y_pos),
+            f"Position: {data['lat']}°N, {data['lon']}°E",
             font=self.font,
             fill=0
         )
