@@ -17,6 +17,9 @@ class DisplayGenerator:
         self.font = ImageFont.load_default()
         self.map_width = width // 2  # Half width for map
         self.map_height = height - 60  # Leave space for status bar
+        self.border_margin = 20
+        self.usable_map_width = self.map_width - (2 * self.border_margin)
+        self.usable_map_height = self.map_height - (2 * self.border_margin)
         
     def create_display(self, ship_data: Dict[str, Any]) -> Optional[bytes]:
         """Create a display image for the TRMNL e-ink display."""
@@ -49,22 +52,25 @@ class DisplayGenerator:
     def _draw_simple_map(self, draw: ImageDraw, lat: float, lon: float) -> None:
         """Draw a simple map representation with ship position."""
         # Draw map border
-        border_margin = 20
         draw.rectangle(
-            [border_margin, border_margin, 
-             self.map_width - border_margin, self.map_height - border_margin],
+            [self.border_margin, self.border_margin, 
+             self.map_width - self.border_margin, 
+             self.map_height - self.border_margin],
             outline=0
         )
         
         # Draw grid lines
         grid_spacing = 60  # Increased spacing for wider area
-        for x in range(border_margin, self.map_width - border_margin, grid_spacing):
-            draw.line([(x, border_margin), (x, self.map_height - border_margin)], fill=0, width=1)
-        for y in range(border_margin, self.map_height - border_margin, grid_spacing):
-            draw.line([(border_margin, y), (self.map_width - border_margin, y)], fill=0, width=1)
+        for x in range(self.border_margin, self.map_width - self.border_margin, grid_spacing):
+            draw.line([(x, self.border_margin), 
+                      (x, self.map_height - self.border_margin)], 
+                     fill=0, width=1)
+        for y in range(self.border_margin, self.map_height - self.border_margin, grid_spacing):
+            draw.line([(self.border_margin, y), 
+                      (self.map_width - self.border_margin, y)], 
+                     fill=0, width=1)
         
-        # Calculate ship position on map
-        # Map covers 60 degrees of lat/lon centered on ship position
+        # Calculate map coverage area
         lat_min, lat_max = lat - 30, lat + 30
         lon_min, lon_max = lon - 30, lon + 30
         
@@ -77,28 +83,40 @@ class DisplayGenerator:
         
         # Add region labels
         for region in regions:
-            x = border_margin + (region["lon"] - lon_min) / (lon_max - lon_min) * map_width
-            y = border_margin + (lat_max - region["lat"]) / (lat_max - lat_min) * map_height
-            draw.text((x, y), region["name"], font=self.font, fill=0, anchor="mm")
-        
-        map_height = self.map_height - (2 * border_margin)
-        map_width = self.map_width - (2 * border_margin)
+            x = self.border_margin + (
+                (region["lon"] - lon_min) / (lon_max - lon_min)
+            ) * self.usable_map_width
+            y = self.border_margin + (
+                (lat_max - region["lat"]) / (lat_max - lat_min)
+            ) * self.usable_map_height
+            draw.text((int(x), int(y)), region["name"], 
+                     font=self.font, fill=0, anchor="mm")
         
         # Convert ship position to pixel coordinates
-        x = border_margin + (lon - lon_min) / (lon_max - lon_min) * map_width
-        y = border_margin + (lat_max - lat) / (lat_max - lat_min) * map_height
+        x = self.border_margin + (
+            (lon - lon_min) / (lon_max - lon_min)
+        ) * self.usable_map_width
+        y = self.border_margin + (
+            (lat_max - lat) / (lat_max - lat_min)
+        ) * self.usable_map_height
         
         # Draw crosshair marker
         marker_size = 8
-        draw.line([(x - marker_size, y), (x + marker_size, y)], fill=0, width=2)
-        draw.line([(x, y - marker_size), (x, y + marker_size)], fill=0, width=2)
-        draw.ellipse([x - marker_size, y - marker_size,
-                     x + marker_size, y + marker_size], outline=0)
+        draw.line([(int(x - marker_size), int(y)), 
+                   (int(x + marker_size), int(y))], 
+                  fill=0, width=2)
+        draw.line([(int(x), int(y - marker_size)), 
+                   (int(x), int(y + marker_size))], 
+                  fill=0, width=2)
+        draw.ellipse([int(x - marker_size), int(y - marker_size),
+                     int(x + marker_size), int(y + marker_size)], 
+                    outline=0)
         
         # Draw coordinates
-        draw.text((border_margin + 5, border_margin - 15),
+        draw.text((self.border_margin + 5, self.border_margin - 15),
                  f"{lat:.1f}°N", font=self.font, fill=0)
-        draw.text((self.map_width - border_margin - 50, border_margin - 15),
+        draw.text((self.map_width - self.border_margin - 50, 
+                  self.border_margin - 15),
                  f"{lon:.1f}°E", font=self.font, fill=0)
         
         # Draw compass rose
