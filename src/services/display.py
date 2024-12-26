@@ -6,16 +6,8 @@ from typing import Optional, Dict, Any, Tuple
 from datetime import datetime
 from math import log, tan, pi, cos, radians
 from ..utils.formatters import format_timestamp
-import time
 
 logger = logging.getLogger(__name__)
-
-class MapProvider:
-    """Base class for map tile providers"""
-    def __init__(self, name: str, url_template: str, attribution: str):
-        self.name = name
-        self.url_template = url_template
-        self.attribution = attribution
 
 class DisplayGenerator:
     """Service for generating e-ink display images."""
@@ -28,41 +20,15 @@ class DisplayGenerator:
         self.map_height = height - 60
         self.session = self._create_session()
         
-        # Configure map providers in order of preference
-        self.providers = [
-            MapProvider(
-                "OpenStreetMap",
-                "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-                "© OpenStreetMap contributors"
-            ),
-            MapProvider(
-                "Stamen Terrain",
-                "http://tile.stamen.com/terrain/{z}/{x}/{y}.png",
-                "© Stamen Design"
-            ),
-            MapProvider(
-                "CartoDB",
-                "https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png",
-                "© CartoDB"
-            )
-        ]
-        
-        # Initialize tile cache
-        self.tile_cache = {}
-        self.cache_duration = 3600  # 1 hour cache
-    
     def _create_session(self) -> requests.Session:
         """Create a requests session with retry configuration."""
         session = requests.Session()
-        adapter = requests.adapters.HTTPAdapter(
-            max_retries=3,
-            pool_connections=10,
-            pool_maxsize=10
-        )
-        session.mount('http://', adapter)
-        session.mount('https://', adapter)
+        session.headers.update({
+            'User-Agent': 'TRMNL_Ship_Tracker/1.0',
+            'Accept': 'image/png'
+        })
         return session
-    
+        
     def create_display(self, ship_data: Dict[str, Any]) -> Optional[bytes]:
         """Create a display image for the TRMNL e-ink display."""
         try:
@@ -72,11 +38,8 @@ class DisplayGenerator:
             if not ship_data or ship_data.get('connection_status') != 'connected':
                 self._draw_error_state(draw, ship_data)
             else:
-                # Try to get map from any available provider
-                map_image = self._get_map_with_fallback(
-                    float(ship_data['lat']),
-                    float(ship_data['lon'])
-                )
+                # Get map
+                map_image = self._get_map(float(ship_data['lat']), float(ship_data['lon']))
                 if map_image:
                     image.paste(map_image, (0, 0))
                 
@@ -90,98 +53,70 @@ class DisplayGenerator:
         except Exception as e:
             logger.error(f"Error generating display: {str(e)}")
             return None
-    
-    def _get_map_tile_key(self, provider: MapProvider, zoom: int, x: int, y: int) -> str:
-        """Generate cache key for map tile."""
-        return f"{provider.name}_{zoom}_{x}_{y}"
-    
-    def _get_cached_tile(self, key: str) -> Optional[Image.Image]:
-        """Get tile from cache if available and not expired."""
-        if key in self.tile_cache:
-            timestamp, tile = self.tile_cache[key]
-            if time.time() - timestamp < self.cache_duration:
-                return tile
-            else:
-                del self.tile_cache[key]
-        return None
-    
-    def _cache_tile(self, key: str, tile: Image.Image) -> None:
-        """Cache a map tile."""
-        self.tile_cache[key] = (time.time(), tile)
-    
-    def _get_map_with_fallback(self, lat: float, lon: float) -> Optional[Image.Image]:
-        """Try to get map from each provider until successful."""
-        zoom = 8  # Adjust based on desired detail level
-        
-        for provider in self.providers:
-            try:
-                map_image = self._fetch_map_from_provider(provider, lat, lon, zoom)
-                if map_image:
-                    return map_image
-            except Exception as e:
-                logger.error(f"Error with provider {provider.name}: {str(e)}")
-                continue
-        
-        return self._generate_fallback_map(lat, lon)
-    
-    def _fetch_map_from_provider(self, provider: MapProvider, lat: float, lon: float, zoom: int) -> Optional[Image.Image]:
-        """Fetch map tile from specific provider."""
+
+    def _get_map(self, lat: float, lon: float) -> Optional[Image.Image]:
+        """Get map for the specified coordinates."""
         try:
+            # Calculate zoom level based on current location
+            zoom = 9  # Adjusted for better detail
+
             # Calculate tile coordinates
-            n = 2.0 ** zoom
             lat_rad = radians(lat)
+            n = 2.0 ** zoom
             xtile = int((lon + 180.0) / 360.0 * n)
             ytile = int((1.0 - log(tan(lat_rad) + (1 / cos(lat_rad))) / pi) / 2.0 * n)
+
+            # Get surrounding tiles for better context
+            tiles_to_fetch = [
+                (xtile-1, ytile-1), (xtile, ytile-1), (xtile+1, ytile-1),
+                (xtile-1, ytile),   (xtile, ytile),   (xtile+1, ytile),
+                (xtile-1, ytile+1), (xtile, ytile+1), (xtile+1, ytile+1)
+            ]
+
+            # Create a combined image
+            combined = Image.new('RGB', (256 * 3, 256 * 3))
+
+            for idx, (x, y) in enumerate(tiles_to_fetch):
+                try:
+                    url = f"https://tile.openstreetmap.org/{zoom}/{x}/{y}.png"
+                    response = self.session.get(url, timeout=10)
+                    if response.status_code == 200:
+                        tile = Image.open(io.BytesIO(response.content))
+                        pos_x = (idx % 3) * 256
+                        pos_y = (idx // 3) * 256
+                        combined.paste(tile, (pos_x, pos_y))
+                except Exception as e:
+                    logger.error(f"Error fetching tile {x},{y}: {str(e)}")
+                    continue
+
+            # Resize to our display dimensions
+            resized = combined.resize((self.map_width, self.map_height), Image.LANCZOS)
             
-            # Check cache first
-            cache_key = self._get_map_tile_key(provider, zoom, xtile, ytile)
-            cached_tile = self._get_cached_tile(cache_key)
-            if cached_tile:
-                return self._process_tile(cached_tile, lat, lon)
+            # Convert to black and white with dithering
+            bw = resized.convert('1', dither=Image.FLOYDSTEINBERG)
             
-            # Fetch tile if not cached
-            url = provider.url_template.format(z=zoom, x=xtile, y=ytile)
-            response = self.session.get(url, timeout=10)
+            # Add ship marker at center
+            draw = ImageDraw.Draw(bw)
+            center_x = self.map_width // 2
+            center_y = self.map_height // 2
             
-            if response.status_code == 200:
-                tile = Image.open(io.BytesIO(response.content))
-                self._cache_tile(cache_key, tile)
-                return self._process_tile(tile, lat, lon)
-            
-            return None
-            
+            # Draw crosshair marker
+            marker_size = 10
+            draw.line([(center_x - marker_size, center_y), 
+                      (center_x + marker_size, center_y)], fill=0, width=2)
+            draw.line([(center_x, center_y - marker_size), 
+                      (center_x, center_y + marker_size)], fill=0, width=2)
+            draw.ellipse([center_x - marker_size, center_y - marker_size,
+                         center_x + marker_size, center_y + marker_size], outline=0)
+
+            return bw
+
         except Exception as e:
-            logger.error(f"Error fetching from {provider.name}: {str(e)}")
-            return None
-    
-    def _process_tile(self, tile: Image.Image, lat: float, lon: float) -> Image.Image:
-        """Process a map tile for display."""
-        # Resize to fit display
-        map_image = tile.resize((self.map_width, self.map_height))
-        
-        # Convert to black and white with dithering
-        map_bw = map_image.convert('1', dither=Image.FLOYDSTEINBERG)
-        
-        # Add ship marker
-        draw = ImageDraw.Draw(map_bw)
-        
-        # Calculate relative position within tile
-        lat_rad = radians(lat)
-        y_pos = self.map_height * (1 - (lat_rad - pi/4) / (pi/2))
-        x_pos = self.map_width * ((lon + 180) / 360)
-        
-        # Draw marker
-        marker_size = 10
-        x, y = int(x_pos), int(y_pos)
-        draw.line([(x - marker_size, y), (x + marker_size, y)], fill=0, width=2)
-        draw.line([(x, y - marker_size), (x, y + marker_size)], fill=0, width=2)
-        draw.ellipse([x - marker_size, y - marker_size,
-                     x + marker_size, y + marker_size], outline=0)
-        
-        return map_bw
+            logger.error(f"Error generating map: {str(e)}")
+            return self._generate_fallback_map(lat, lon)
     
     def _generate_fallback_map(self, lat: float, lon: float) -> Image.Image:
-        """Generate basic map when no providers are available."""
+        """Generate basic map when OpenStreetMap is unavailable."""
         map_image = Image.new('1', (self.map_width, self.map_height), 1)
         draw = ImageDraw.Draw(map_image)
         
@@ -197,7 +132,7 @@ class DisplayGenerator:
         
         # Add position text
         draw.text((self.map_width//2, 20),
-                 f"Map Unavailable",
+                 "OpenStreetMap Unavailable",
                  font=self.font, fill=0, anchor="mm")
         draw.text((self.map_width//2, 40),
                  f"Position: {lat:.4f}°, {lon:.4f}°",
