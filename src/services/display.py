@@ -57,16 +57,29 @@ class DisplayGenerator:
         )
         
         # Draw grid lines
-        grid_spacing = 40
+        grid_spacing = 60  # Increased spacing for wider area
         for x in range(border_margin, self.map_width - border_margin, grid_spacing):
             draw.line([(x, border_margin), (x, self.map_height - border_margin)], fill=0, width=1)
         for y in range(border_margin, self.map_height - border_margin, grid_spacing):
             draw.line([(border_margin, y), (self.map_width - border_margin, y)], fill=0, width=1)
         
         # Calculate ship position on map
-        # Map covers 20 degrees of lat/lon centered on ship position
-        lat_min, lat_max = lat - 10, lat + 10
-        lon_min, lon_max = lon - 10, lon + 10
+        # Map covers 60 degrees of lat/lon centered on ship position
+        lat_min, lat_max = lat - 30, lat + 30
+        lon_min, lon_max = lon - 30, lon + 30
+        
+        # Add simple geographical labels
+        regions = [
+            {"lat": lat_min + 10, "lon": lon_min + 10, "name": "ASIA"},
+            {"lat": lat_min + 10, "lon": lon_max - 20, "name": "PACIFIC"},
+            {"lat": lat_max - 10, "lon": lon_min + 20, "name": "INDIAN OCEAN"}
+        ]
+        
+        # Add region labels
+        for region in regions:
+            x = border_margin + (region["lon"] - lon_min) / (lon_max - lon_min) * map_width
+            y = border_margin + (lat_max - region["lat"]) / (lat_max - lat_min) * map_height
+            draw.text((x, y), region["name"], font=self.font, fill=0, anchor="mm")
         
         map_height = self.map_height - (2 * border_margin)
         map_width = self.map_width - (2 * border_margin)
