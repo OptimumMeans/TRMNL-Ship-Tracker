@@ -4,7 +4,7 @@ import logging
 import requests
 from typing import Optional, Dict, Any, Tuple
 from datetime import datetime
-from math import log, tan, pi
+from math import log, tan, pi, cos, radians
 from ..utils.formatters import format_timestamp
 
 logger = logging.getLogger(__name__)
@@ -13,12 +13,6 @@ class DisplayGenerator:
     """Service for generating e-ink display images."""
     
     def __init__(self, width: int, height: int):
-        """Initialize the display generator.
-        
-        Args:
-            width: Display width in pixels
-            height: Display height in pixels
-        """
         self.width = width
         self.height = height
         self.font = ImageFont.load_default()
@@ -36,12 +30,16 @@ class DisplayGenerator:
                 self._draw_error_state(draw, ship_data)
             else:
                 # Draw left side with map
-                map_image = self._generate_map(
-                    float(ship_data['lat']),
-                    float(ship_data['lon'])
-                )
-                if map_image:
-                    image.paste(map_image, (0, 0))
+                try:
+                    map_image = self._generate_map(
+                        float(ship_data['lat']),
+                        float(ship_data['lon'])
+                    )
+                    if map_image:
+                        image.paste(map_image, (0, 0))
+                except Exception as e:
+                    logger.error(f"Map generation failed: {str(e)}")
+                    # Continue with rest of display even if map fails
                 
                 # Draw right side with ship data
                 self._draw_ship_info(draw, ship_data)
@@ -62,7 +60,7 @@ class DisplayGenerator:
         """Generate map tile with ship position."""
         try:
             # Calculate OSM tile coordinates
-            zoom = 8  # Adjust zoom level as needed
+            zoom = 5  # Increased zoom level for better overview
             x, y = self._latlon_to_tile(lat, lon, zoom)
             
             # Fetch map tile
@@ -82,12 +80,17 @@ class DisplayGenerator:
             # Add ship marker
             draw = ImageDraw.Draw(map_bw)
             pixel_x, pixel_y = self._latlon_to_pixels(lat, lon, zoom)
-            marker_size = 10
-            draw.ellipse(
-                [pixel_x - marker_size, pixel_y - marker_size,
-                 pixel_x + marker_size, pixel_y + marker_size],
-                fill=0
-            )
+            
+            # Draw crosshair marker
+            marker_size = 8
+            draw.line([(pixel_x - marker_size, pixel_y),
+                      (pixel_x + marker_size, pixel_y)], fill=0, width=2)
+            draw.line([(pixel_x, pixel_y - marker_size),
+                      (pixel_x, pixel_y + marker_size)], fill=0, width=2)
+            # Add circle around crosshair
+            draw.ellipse([pixel_x - marker_size, pixel_y - marker_size,
+                         pixel_x + marker_size, pixel_y + marker_size], 
+                        outline=0)
             
             return map_bw
             
@@ -97,7 +100,7 @@ class DisplayGenerator:
     
     def _latlon_to_tile(self, lat: float, lon: float, zoom: int) -> Tuple[int, int]:
         """Convert latitude/longitude to tile coordinates."""
-        lat_rad = lat * pi / 180
+        lat_rad = radians(lat)
         n = 2.0 ** zoom
         x = int((lon + 180.0) / 360.0 * n)
         y = int((1.0 - log(tan(lat_rad) + (1 / cos(lat_rad))) / pi) / 2.0 * n)
@@ -105,9 +108,9 @@ class DisplayGenerator:
     
     def _latlon_to_pixels(self, lat: float, lon: float, zoom: int) -> Tuple[int, int]:
         """Convert latitude/longitude to pixel coordinates within map image."""
-        x, y = self._latlon_to_tile(lat, lon, zoom)
+        lat_rad = radians(lat)
         pixel_x = int((lon + 180) / 360 * self.map_width)
-        pixel_y = int((1 - (log(tan(pi/4 + lat*pi/360)) / pi)) / 2 * self.map_height)
+        pixel_y = int((1 - log(tan(pi/4 + lat_rad/2)) / pi) / 2 * self.map_height)
         return pixel_x, pixel_y
     
     def _draw_ship_info(self, draw: ImageDraw, data: Dict[str, Any]) -> None:
