@@ -23,7 +23,8 @@ class VesselFinderService:
             
             params = {
                 "userkey": self.api_key,
-                "mmsi": self.mmsi
+                "mmsi": self.mmsi,
+                "sat": 1  # Enable satellite data for distance_remaining and eta_predicted
             }
             
             logger.info(f"Making request to {self.endpoint}")
@@ -49,7 +50,11 @@ class VesselFinderService:
                 logger.error("No AIS data in response")
                 return None
             
-            # Format data for display, using actual fields from API response
+            # Calculate vessel dimensions
+            length = self._calculate_length(ais_data.get("A", 0), ais_data.get("B", 0))
+            width = self._calculate_width(ais_data.get("C", 0), ais_data.get("D", 0))
+            
+            # Format data for display
             vessel_data = {
                 "ship_name": ais_data.get("NAME", "Unknown Vessel"),
                 "mmsi": ais_data.get("MMSI", self.mmsi),
@@ -61,11 +66,22 @@ class VesselFinderService:
                 "heading": ais_data.get("HEADING", ""),
                 "destination": ais_data.get("DESTINATION", "Unknown"),
                 "eta": ais_data.get("ETA", "Unknown"),
-                "draught": ais_data.get("DRAUGHT", "Unknown"),
+                "eta_predicted": ais_data.get("ETA_PREDICTED", "Unknown"),
+                "distance_remaining": ais_data.get("DISTANCE_REMAINING", "Unknown"),
+                "draught": f"{float(ais_data.get('DRAUGHT', 0)):.1f}",
                 "zone": ais_data.get("ZONE", "Unknown"),
                 "timestamp": ais_data.get("TIMESTAMP"),
+                "nav_status": self._format_nav_status(ais_data.get("NAVSTAT", 0)),
+                "dimensions": {
+                    "length": length,
+                    "width": width,
+                    "draught": ais_data.get("DRAUGHT", "Unknown")
+                },
+                "eca_status": ais_data.get("ECA", False),
                 "connection_status": "connected",
-                "source": ais_data.get("SRC", "Unknown")
+                "source": ais_data.get("SRC", "Unknown"),
+                "callsign": ais_data.get("CALLSIGN", "Unknown"),
+                "type": ais_data.get("TYPE", "Unknown")
             }
             
             # Update cache and timestamps
@@ -75,18 +91,40 @@ class VesselFinderService:
             logger.info(f"Successfully fetched data for {vessel_data['ship_name']}")
             return vessel_data
             
-        except requests.exceptions.Timeout:
-            logger.error("API request timed out")
-            return None
-            
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Request error: {str(e)}")
-            return None
-            
         except Exception as e:
             logger.error(f"Unexpected error: {str(e)}")
             logger.error(traceback.format_exc())
             return None
+
+    def _calculate_length(self, a: int, b: int) -> int:
+        """Calculate vessel length from A and B dimensions."""
+        try:
+            return a + b
+        except (TypeError, ValueError):
+            return 0
+
+    def _calculate_width(self, c: int, d: int) -> int:
+        """Calculate vessel width from C and D dimensions."""
+        try:
+            return c + d
+        except (TypeError, ValueError):
+            return 0
+
+    def _format_nav_status(self, status_code: int) -> str:
+        """Convert AIS navigation status code to human-readable string."""
+        status_map = {
+            0: "Under way using engine",
+            1: "At anchor",
+            2: "Not under command",
+            3: "Restricted maneuverability",
+            4: "Constrained by draught",
+            5: "Moored",
+            6: "Aground",
+            7: "Engaged in fishing",
+            8: "Under way sailing",
+            15: "Not defined"
+        }
+        return status_map.get(status_code, "Unknown")
     
     def _update_cache(self, data: Dict[str, Any]) -> None:
         """Update the cache with new data."""

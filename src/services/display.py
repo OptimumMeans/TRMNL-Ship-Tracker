@@ -5,7 +5,7 @@ import requests
 from typing import Optional, Dict, Any, Tuple
 from datetime import datetime
 from math import log, tan, pi, cos, radians
-from ..utils.formatters import format_timestamp
+from ..utils.formatters import format_timestamp, format_eta, format_distance
 
 logger = logging.getLogger(__name__)
 
@@ -153,15 +153,17 @@ class DisplayGenerator:
             fill=1
         )
         
-        # MMSI and destination
-        y_pos = 100
+        # MMSI and basic info
+        y_pos = 90
         draw.text(
             (x_start, y_pos),
             f"MMSI: {data['mmsi']}",
             font=self.font,
             fill=0
         )
-        y_pos += 30
+
+        # Destination and ETA
+        y_pos += 25
         draw.text(
             (x_start, y_pos),
             f"Destination: {data.get('destination', 'Unknown')}",
@@ -169,28 +171,87 @@ class DisplayGenerator:
             fill=0
         )
         
+        if data.get('eta_predicted') != "Unknown":
+            y_pos += 20
+            eta = format_eta(data['eta_predicted'])
+            draw.text(
+                (x_start, y_pos),
+                f"ETA: {eta}",
+                font=self.font,
+                fill=0
+            )
+        
+        if data.get('distance_remaining') != "Unknown":
+            y_pos += 20
+            distance = format_distance(data['distance_remaining'])
+            draw.text(
+                (x_start, y_pos),
+                f"Distance: {distance}",
+                font=self.font,
+                fill=0
+            )
+        
         # Navigation data
-        y_pos += 50
+        y_pos += 30
         draw.text(
             (x_start, y_pos),
             f"Speed: {data['speed']} knots",
             font=self.font,
             fill=0
         )
-        y_pos += 30
+        y_pos += 25
         draw.text(
             (x_start, y_pos),
             f"Course: {data['course']}°",
             font=self.font,
             fill=0
         )
-        y_pos += 30
+        y_pos += 25
         draw.text(
             (x_start, y_pos),
             f"Position: {data['lat']}°S, {data['lon']}°W",
             font=self.font,
             fill=0
         )
+
+        # Navigation Status
+        if data.get('nav_status'):
+            y_pos += 30
+            draw.text(
+                (x_start, y_pos),
+                f"Status: {data['nav_status']}",
+                font=self.font,
+                fill=0
+            )
+
+        # Vessel Dimensions
+        if isinstance(data.get('dimensions'), dict):
+            y_pos += 30
+            dims = data['dimensions']
+            draw.text(
+                (x_start, y_pos),
+                f"L: {dims['length']}m • W: {dims['width']}m",
+                font=self.font,
+                fill=0
+            )
+            if dims.get('draught'):
+                y_pos += 20
+                draw.text(
+                    (x_start, y_pos),
+                    f"Draught: {dims['draught']}m",
+                    font=self.font,
+                    fill=0
+                )
+
+        # ECA Status
+        if data.get('eca_status'):
+            y_pos += 25
+            draw.text(
+                (x_start, y_pos),
+                "⬤ In Emission Control Area",
+                font=self.font,
+                fill=0
+            )
     
     def _draw_status_bar(self, draw: ImageDraw, data: Dict[str, Any]) -> None:
         """Draw status bar at bottom of display."""
@@ -200,9 +261,12 @@ class DisplayGenerator:
         )
         
         timestamp = format_timestamp(data['timestamp'])
+        source_text = f"Source: {data['source']}" if data.get('source') else ""
+        status_text = f"Last Update: {timestamp} • {source_text}"
+        
         draw.text(
             (20, self.height-30),
-            f"Last Update: {timestamp}",
+            status_text,
             font=self.font,
             fill=1
         )

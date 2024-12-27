@@ -1,5 +1,5 @@
 from datetime import datetime, UTC
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Union
 from flask import jsonify
 
 def format_timestamp(timestamp: str) -> str:
@@ -101,3 +101,63 @@ def format_mmsi(mmsi: str) -> Optional[str]:
         return f"{mmsi_clean[:3]} {mmsi_clean[3:6]} {mmsi_clean[6:]}"
     except (ValueError, TypeError, AttributeError):
         return None
+    
+def format_eta(eta: str) -> str:
+    """Format ETA timestamp for display.
+    
+    Args:
+        eta: ETA timestamp string
+        
+    Returns:
+        Formatted ETA string
+    """
+    try:
+        if eta == "Unknown":
+            return eta
+        dt = datetime.fromisoformat(eta.replace('Z', '+00:00'))
+        return dt.strftime('%Y-%m-%d %H:%M UTC')
+    except (ValueError, AttributeError):
+        return eta
+
+def format_distance(distance: Union[int, str]) -> str:
+    """Format distance remaining for display.
+    
+    Args:
+        distance: Distance in nautical miles
+        
+    Returns:
+        Formatted distance string
+    """
+    try:
+        if isinstance(distance, (int, float)):
+            return f"{distance:,} nm"
+        return str(distance)
+    except (ValueError, TypeError):
+        return "Unknown"
+
+def format_dimensions(length: float, width: float, draught: float) -> str:
+    """Format vessel dimensions for display.
+    
+    Args:
+        length: Vessel length in meters
+        width: Vessel width in meters
+        draught: Vessel draught in meters
+        
+    Returns:
+        Formatted dimensions string
+    """
+    try:
+        return f"L: {length}m • W: {width}m • D: {draught}m"
+    except (ValueError, TypeError):
+        return "Dimensions unavailable"
+
+def format_nav_status(status: str) -> str:
+    """Format navigation status for display.
+    
+    Args:
+        status: Navigation status string
+        
+    Returns:
+        Formatted status string
+    """
+    return status.replace('_', ' ').capitalize() if status else "Unknown"
