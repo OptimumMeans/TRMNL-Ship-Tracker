@@ -15,7 +15,7 @@ class Config:
     # Ship Tracking Configuration
     MMSI = os.getenv('MMSI', '235103357')  # Sapphire Princess
     VESSELFINDER_API_KEY = os.getenv('VESSELFINDER_API_KEY')
-    REFRESH_INTERVAL = int(os.getenv('REFRESH_INTERVAL', '900'))  # 15 minutes
+    REFRESH_INTERVAL = int(os.getenv('REFRESH_INTERVAL', '21600'))  # 6 hour refresh int (4x/day)
     
     # TRMNL Configuration
     TRMNL_API_KEY = os.getenv('TRMNL_API_KEY')
