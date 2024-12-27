@@ -2,6 +2,8 @@
 
 A TRMNL plugin for tracking ships using the VesselFinder API. This plugin displays real-time ship position, speed, course, and other relevant data on your TRMNL e-ink display.
 
+![image](https://github.com/user-attachments/assets/3f10afde-4809-486c-8db9-c17f82b6298f)
+
 ## Features
 
 - Real-time ship position tracking
