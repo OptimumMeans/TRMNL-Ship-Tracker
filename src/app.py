@@ -3,10 +3,10 @@ from flask_cors import CORS
 import logging
 from datetime import datetime, UTC
 import traceback
+import os
 
 from .config import Config
 from .services.display import DisplayGenerator
-from .services.vesselfinder_service import VesselFinderService
 from .utils.formatters import format_timestamp, format_error_response
 
 # Configure logging
@@ -27,12 +27,20 @@ except ValueError as e:
     logger.error(f"Configuration error: {str(e)}")
     raise
 
-# Initialize services
+# Initialize services based on environment
+if os.getenv('FLASK_ENV') == 'development':
+    logger.info("Running in development mode with mock service")
+    from tests.mock_vessel_service import MockVesselFinderService
+    vessel_service = MockVesselFinderService()
+else:
+    logger.info("Running in production mode")
+    from .services.vesselfinder_service import VesselFinderService
+    vessel_service = VesselFinderService(
+        api_key=Config.VESSELFINDER_API_KEY,
+        mmsi=Config.MMSI
+    )
+
 display_generator = DisplayGenerator(Config.DISPLAY_WIDTH, Config.DISPLAY_HEIGHT)
-vessel_service = VesselFinderService(
-    api_key=Config.VESSELFINDER_API_KEY,
-    mmsi=Config.MMSI
-)
 
 @app.route('/')
 def home():
@@ -44,7 +52,8 @@ def home():
         "status": "running",
         "last_update": vessel_service.last_update.isoformat() if vessel_service.last_update else None,
         "mmsi": Config.MMSI,
-        "refresh_interval": Config.REFRESH_INTERVAL
+        "refresh_interval": Config.REFRESH_INTERVAL,
+        "mode": "development" if os.getenv('FLASK_ENV') == 'development' else "production"
     })
 
 @app.route('/status')
@@ -58,7 +67,8 @@ def status():
         "config": {
             "mmsi": Config.MMSI,
             "refresh_interval": Config.REFRESH_INTERVAL,
-            "display_dimensions": f"{Config.DISPLAY_WIDTH}x{Config.DISPLAY_HEIGHT}"
+            "display_dimensions": f"{Config.DISPLAY_WIDTH}x{Config.DISPLAY_HEIGHT}",
+            "mode": "development" if os.getenv('FLASK_ENV') == 'development' else "production"
         }
     })
 
@@ -92,7 +102,6 @@ def trmnl_webhook():
             mimetype='image/bmp'
         )
 
-
 @app.route('/debug')
 def debug():
     """Debug endpoint to see raw API response."""
@@ -104,7 +113,8 @@ def debug():
             "mmsi": Config.MMSI,
             "last_update": vessel_service.last_update.isoformat() if vessel_service.last_update else None,
             "cache_status": "valid" if vessel_service._is_cache_valid() else "invalid",
-            "cache_timeout": Config.CACHE_TIMEOUT
+            "cache_timeout": Config.CACHE_TIMEOUT,
+            "mode": "development" if os.getenv('FLASK_ENV') == 'development' else "production"
         })
     except Exception as e:
         return jsonify({
@@ -127,19 +137,10 @@ if __name__ == "__main__":
     logger.info(f"Plugin UUID: {Config.TRMNL_PLUGIN_UUID}")
     logger.info(f"Target MMSI: {Config.MMSI}")
     logger.info(f"Refresh Interval: {Config.REFRESH_INTERVAL} seconds")
+    logger.info(f"Mode: {'development' if os.getenv('FLASK_ENV') == 'development' else 'production'}")
     
     app.run(
         host=Config.HOST,
         port=Config.PORT,
         debug=Config.DEBUG
     )
-    
-# Test DisplayGenerator
-vessel_data = vessel_service.get_vessel_data()
-image_data = display_generator.create_display(vessel_data)
-
-# Save to file for verification
-with open("test_output.bmp", "wb") as file:
-    file.write(image_data)
-
-print("BMP file saved as test_output.bmp")

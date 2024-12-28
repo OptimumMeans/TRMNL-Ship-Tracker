@@ -15,7 +15,13 @@ class DisplayGenerator:
     def __init__(self, width: int, height: int):
         self.width = width
         self.height = height
-        self.font = ImageFont.load_default()
+        try:
+            # Try to create a larger TrueType font
+            self.font = ImageFont.truetype(font="arial.ttf", size=16)
+        except Exception as e:
+            logger.warning(f"Failed to load TrueType font: {e}")
+            # Fallback to default font
+            self.font = ImageFont.load_default()
         self.map_width = width // 2
         self.map_height = height - 60
         self.session = self._create_session()
@@ -223,6 +229,16 @@ class DisplayGenerator:
                 font=self.font,
                 fill=0
             )
+            
+        # Zone data
+        if data.get('zone'):
+            y_pos += 25
+            draw.text(
+                (x_start, y_pos),
+                f"Zone: {data['zone']}",
+                font=self.font,
+                fill=0
+            )
 
         # Vessel Dimensions
         if isinstance(data.get('dimensions'), dict):
@@ -230,7 +246,7 @@ class DisplayGenerator:
             dims = data['dimensions']
             draw.text(
                 (x_start, y_pos),
-                f"L: {dims['length']}m • W: {dims['width']}m",
+                f"Length: {dims['length']}m  •  Width: {dims['width']}m",
                 font=self.font,
                 fill=0
             )
@@ -243,15 +259,16 @@ class DisplayGenerator:
                     fill=0
                 )
 
-        # ECA Status
-        if data.get('eca_status'):
-            y_pos += 25
-            draw.text(
-                (x_start, y_pos),
-                "⬤ In Emission Control Area",
-                font=self.font,
-                fill=0
-            )
+        # ECA Status UNCOMMENT IF YOU NEED EMISSIONS STATUS
+        ## if data.get('eca_status'):
+            ## y_pos += 25
+            ## checkbox = "■" if data['eca_status'] else "□"  # Filled square for True, empty for False
+            ## draw.text(
+                ## (x_start, y_pos),
+                ## f"{checkbox} In Emission Control Area",
+                ## font=self.font,
+                ## fill=0
+            ## )
     
     def _draw_status_bar(self, draw: ImageDraw, data: Dict[str, Any]) -> None:
         """Draw status bar at bottom of display."""
