@@ -177,9 +177,11 @@ class DisplayGenerator:
             fill=0
         )
         
-        if data.get('eta_predicted') != "Unknown":
+        # ETA - improved null checking
+        eta_value = data.get('eta_predicted')
+        if eta_value and str(eta_value) not in ("Unknown", "None"):
             y_pos += 20
-            eta = format_eta(data['eta_predicted'])
+            eta = format_eta(eta_value)
             draw.text(
                 (x_start, y_pos),
                 f"ETA: {eta}",
@@ -187,9 +189,11 @@ class DisplayGenerator:
                 fill=0
             )
         
-        if data.get('distance_remaining') != "Unknown":
+        # Distance - improved null checking
+        distance_value = data.get('distance_remaining')
+        if distance_value and str(distance_value) not in ("Unknown", "None"):
             y_pos += 20
-            distance = format_distance(data['distance_remaining'])
+            distance = format_distance(distance_value)
             draw.text(
                 (x_start, y_pos),
                 f"Distance: {distance}",
@@ -258,17 +262,6 @@ class DisplayGenerator:
                     font=self.font,
                     fill=0
                 )
-
-        # ECA Status UNCOMMENT IF YOU NEED EMISSIONS STATUS
-        ## if data.get('eca_status'):
-            ## y_pos += 25
-            ## checkbox = "■" if data['eca_status'] else "□"  # Filled square for True, empty for False
-            ## draw.text(
-                ## (x_start, y_pos),
-                ## f"{checkbox} In Emission Control Area",
-                ## font=self.font,
-                ## fill=0
-            ## )
     
     def _draw_status_bar(self, draw: ImageDraw, data: Dict[str, Any]) -> None:
         """Draw status bar at bottom of display."""
