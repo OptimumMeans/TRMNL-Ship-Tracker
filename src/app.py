@@ -27,9 +27,13 @@ except ValueError as e:
     logger.error(f"Configuration error: {str(e)}")
     raise
 
-# Initialize services based on environment
-if os.getenv('FLASK_ENV') == 'development':
-    logger.info("Running in development mode with mock service")
+# Use environment variables to control mode
+MOCK_MODE = os.getenv('MOCK_MODE', 'false').lower() == 'true'
+FLASK_ENV = os.getenv('FLASK_ENV', 'production')
+
+# Initialize services based on mode
+if MOCK_MODE or FLASK_ENV == 'development':
+    logger.info("Running in mock mode with test data")
     from tests.mock_vessel_service import MockVesselFinderService
     vessel_service = MockVesselFinderService()
 else:
@@ -53,7 +57,7 @@ def home():
         "last_update": vessel_service.last_update.isoformat() if vessel_service.last_update else None,
         "mmsi": Config.MMSI,
         "refresh_interval": Config.REFRESH_INTERVAL,
-        "mode": "development" if os.getenv('FLASK_ENV') == 'development' else "production"
+        "mode": "mock" if MOCK_MODE else ("development" if FLASK_ENV == 'development' else "production")
     })
 
 @app.route('/status')
@@ -68,7 +72,7 @@ def status():
             "mmsi": Config.MMSI,
             "refresh_interval": Config.REFRESH_INTERVAL,
             "display_dimensions": f"{Config.DISPLAY_WIDTH}x{Config.DISPLAY_HEIGHT}",
-            "mode": "development" if os.getenv('FLASK_ENV') == 'development' else "production"
+            "mode": "mock" if MOCK_MODE else ("development" if FLASK_ENV == 'development' else "production")
         }
     })
 
@@ -77,6 +81,7 @@ def trmnl_webhook():
     try:
         # Get vessel data
         vessel_data = vessel_service.get_vessel_data()
+        logger.info(f"Mode: {'MOCK' if MOCK_MODE else 'PRODUCTION'}")
         logger.info(f"Vessel data retrieved: {vessel_data}")
         
         # Generate BMP image using DisplayGenerator
@@ -114,7 +119,7 @@ def debug():
             "last_update": vessel_service.last_update.isoformat() if vessel_service.last_update else None,
             "cache_status": "valid" if vessel_service._is_cache_valid() else "invalid",
             "cache_timeout": Config.CACHE_TIMEOUT,
-            "mode": "development" if os.getenv('FLASK_ENV') == 'development' else "production"
+            "mode": "mock" if MOCK_MODE else ("development" if FLASK_ENV == 'development' else "production")
         })
     except Exception as e:
         return jsonify({
@@ -137,7 +142,7 @@ if __name__ == "__main__":
     logger.info(f"Plugin UUID: {Config.TRMNL_PLUGIN_UUID}")
     logger.info(f"Target MMSI: {Config.MMSI}")
     logger.info(f"Refresh Interval: {Config.REFRESH_INTERVAL} seconds")
-    logger.info(f"Mode: {'development' if os.getenv('FLASK_ENV') == 'development' else 'production'}")
+    logger.info(f"Mode: {'mock' if MOCK_MODE else ('development' if FLASK_ENV == 'development' else 'production')}")
     
     app.run(
         host=Config.HOST,

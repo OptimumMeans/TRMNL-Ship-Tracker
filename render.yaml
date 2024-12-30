@@ -15,3 +15,5 @@ services:
         sync: false
       - key: TRMNL_PLUGIN_UUID
         sync: false
+      - key: MOCK_MODE
+        value: true
